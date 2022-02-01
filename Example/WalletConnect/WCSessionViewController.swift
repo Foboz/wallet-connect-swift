@@ -6,9 +6,9 @@
 
 import UIKit
 import WalletConnect
-import PromiseKit
 import TrustWalletCore
 import UserNotifications
+import Combine
 
 class WCSessionViewController: UIViewController {
 
@@ -30,6 +30,8 @@ class WCSessionViewController: UIViewController {
 
     private var backgroundTaskId: UIBackgroundTaskIdentifier?
     private weak var backgroundTimer: Timer?
+
+    private var subscriptions = Set<AnyCancellable>()
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -58,11 +60,17 @@ class WCSessionViewController: UIViewController {
 
         configure(interactor: interactor)
 
-        interactor.connect().done { [weak self] connected in
-            self?.connectionStatusUpdated(connected)
-        }.catch { [weak self] error in
-            self?.present(error: error)
-        }
+        interactor.connect()
+            .sink(receiveCompletion: { [weak self] completion in
+                switch completion {
+                case let .failure(error):
+                    self?.present(error: error)
+                case .finished: break
+                }
+            }, receiveValue: { [weak self] connected in
+                self?.connectionStatusUpdated(connected)
+            })
+            .store(in: &self.subscriptions)
 
         self.interactor = interactor
     }
@@ -76,14 +84,16 @@ class WCSessionViewController: UIViewController {
         }
 
         interactor.onSessionRequest = { [weak self] (id, peerParam) in
+            guard let strongSelf = self else { return }
             let peer = peerParam.peerMeta
             let message = [peer.description, peer.url].joined(separator: "\n")
             let alert = UIAlertController(title: peer.name, message: message, preferredStyle: .alert)
+
             alert.addAction(UIAlertAction(title: "Reject", style: .destructive, handler: { _ in
-                self?.interactor?.rejectSession().cauterize()
+                _ = strongSelf.interactor?.rejectSession()
             }))
             alert.addAction(UIAlertAction(title: "Approve", style: .default, handler: { _ in
-                self?.interactor?.approveSession(accounts: accounts, chainId: chainId).cauterize()
+                _ = strongSelf.interactor?.approveSession(accounts: accounts, chainId: chainId)
             }))
             self?.show(alert, sender: nil)
         }
@@ -98,7 +108,7 @@ class WCSessionViewController: UIViewController {
         interactor.eth.onSign = { [weak self] (id, payload) in
             let alert = UIAlertController(title: payload.method, message: payload.message, preferredStyle: .alert)
             alert.addAction(UIAlertAction(title: "Cancel", style: .destructive, handler: { _ in
-                self?.interactor?.rejectRequest(id: id, message: "User canceled").cauterize()
+                _ = self?.interactor?.rejectRequest(id: id, message: "User canceled")
             }))
             alert.addAction(UIAlertAction(title: "Sign", style: .default, handler: { _ in
                 self?.signEth(id: id, payload: payload)
@@ -111,7 +121,7 @@ class WCSessionViewController: UIViewController {
             let message = String(data: data, encoding: .utf8)
             let alert = UIAlertController(title: event.rawValue, message: message, preferredStyle: .alert)
             alert.addAction(UIAlertAction(title: "Reject", style: .destructive, handler: { _ in
-                self?.interactor?.rejectRequest(id: id, message: "I don't have ethers").cauterize()
+                _ = self?.interactor?.rejectRequest(id: id, message: "I don't have ethers")
             }))
             self?.show(alert, sender: nil)
         }
@@ -120,7 +130,7 @@ class WCSessionViewController: UIViewController {
             let message = order.encodedString
             let alert = UIAlertController(title: "bnb_sign", message: message, preferredStyle: .alert)
             alert.addAction(UIAlertAction(title: "Cancel", style: .destructive, handler: { [weak self] _ in
-                self?.interactor?.rejectRequest(id: id, message: "User canceled").cauterize()
+                _ = self?.interactor?.rejectRequest(id: id, message: "User canceled")
             }))
             alert.addAction(UIAlertAction(title: "Sign", style: .default, handler: { [weak self] _ in
                 self?.signBnbOrder(id: id, order: order)
@@ -133,21 +143,27 @@ class WCSessionViewController: UIViewController {
             let message = String(data: data, encoding: .utf8)
             let alert = UIAlertController(title: event.rawValue, message: message, preferredStyle: .alert)
             alert.addAction(UIAlertAction(title: "Reject", style: .destructive, handler: { _ in
-                self?.interactor?.rejectRequest(id: id, message: "I don't have okt").cauterize()
+                _ = self?.interactor?.rejectRequest(id: id, message: "I don't have okt")
             }))
             alert.addAction(UIAlertAction(title: "Approve", style: .default, handler: { (_) in
-                self?.interactor?.approveRequest(id: id, result: "This is the signed data").cauterize()
+                _ = self?.interactor?.approveRequest(id: id, result: "This is the signed data")
             }))
             self?.show(alert, sender: nil)
         }
     }
 
     func approve(accounts: [String], chainId: Int) {
-        interactor?.approveSession(accounts: accounts, chainId: chainId).done {
-            print("<== approveSession done")
-        }.catch { [weak self] error in
-            self?.present(error: error)
-        }
+        interactor?.approveSession(accounts: accounts, chainId: chainId)
+            .sink(receiveCompletion: {[weak self] completion in
+                switch completion {
+                case let .failure(error):
+                    self?.present(error: error)
+                case .finished: break
+                }
+            }, receiveValue: {
+                print("<== approveSession done")
+            })
+            .store(in: &self.subscriptions)
     }
 
     func signEth(id: Int64, payload: WCEthereumSignPayload) {
@@ -166,7 +182,7 @@ class WCSessionViewController: UIViewController {
 
         var result = privateKey.sign(digest: Hash.keccak256(data: data), curve: .secp256k1)!
         result[64] += 27
-        self.interactor?.approveRequest(id: id, result: "0x" + result.hexString).cauterize()
+        _ = self.interactor?.approveRequest(id: id, result: "0x" + result.hexString)
     }
 
     func signBnbOrder(id: Int64, order: WCBinanceOrder) {
@@ -177,11 +193,17 @@ class WCSessionViewController: UIViewController {
             signature: signature.dropLast().hexString,
             publicKey: privateKey.getPublicKeySecp256k1(compressed: false).data.hexString
         )
-        interactor?.approveBnbOrder(id: id, signed: signed).done({ confirm in
-            print("<== approveBnbOrder", confirm)
-        }).catch { [weak self] error in
-            self?.present(error: error)
-        }
+        interactor?.approveBnbOrder(id: id, signed: signed)
+            .sink(receiveCompletion: {[weak self] completion in
+                switch completion {
+                case let .failure(error):
+                    self?.present(error: error)
+                case .finished: break
+                }
+            }, receiveValue: { confirm in
+                print("<== approveBnbOrder", confirm)
+            })
+            .store(in: &self.subscriptions)
     }
 
     func connectionStatusUpdated(_ connected: Bool) {
@@ -201,10 +223,13 @@ class WCSessionViewController: UIViewController {
             return
         }
         if let i = interactor, i.state == .connected {
-            i.killSession().done {  [weak self] in
-                self?.approveButton.isEnabled = false
-                self?.connectButton.setTitle("Connect", for: .normal)
-            }.cauterize()
+            i.killSession()
+                .sink(receiveCompletion: { _ in
+                }, receiveValue: {[weak self] _ in
+                    self?.approveButton.isEnabled = false
+                    self?.connectButton.setTitle("Connect", for: .normal)
+                })
+                .store(in: &self.subscriptions)
         } else {
             connect(session: session)
         }

@@ -44,7 +44,7 @@ public struct WCEncryptor {
         let ivBytes = Data(hex: iv)
 
         let data = payloadBytes + ivBytes
-        let hmacBytes = try HMAC(key: key, variant: .sha256).authenticate(data.bytes)
+        let hmacBytes = try HMAC(key: key, variant: .sha2(.sha256)).authenticate(data.bytes)
         let hmac = Data(hmacBytes).hex
         return hmac
     }

@@ -11,7 +11,7 @@ Demo video
 
 ## Requirements
 
-- iOS 11
+- iOS 13
 - Xcode 10.2
 - Swift 5
 
