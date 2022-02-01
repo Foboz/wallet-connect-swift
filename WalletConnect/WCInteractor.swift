@@ -147,29 +147,42 @@ open class WCInteractor {
         return encryptAndSend(data: response.encoded)
     }
 
-    open func killSession() -> AnyPublisher<Void, Error> {
+    open func killSession() -> Future<Void, Error> {
         let result = WCSessionUpdateParam(approved: false, chainId: nil, accounts: nil)
         let response = JSONRPCRequest(id: generateId(), method: WCEvent.sessionUpdate.rawValue, params: [result])
       
-        return encryptAndSend(data: response.encoded)
-            .flatMap { _ in
-                Future<Void, Error> { [weak self] seal in
-                    self?.disconnect()
-                    seal(.success(()))
-                }
-            }
-            .eraseToAnyPublisher()
+        return Future { seal in
+            var dispose: AnyCancellable?
+            dispose = self.encryptAndSend(data: response.encoded)
+            .receive(on: DispatchQueue.main)
+            .sink(receiveCompletion: { [weak self] completion in
+              if case .finished = completion {
+                self?.disconnect()
+                seal(.success(()))
+
+                dispose?.cancel()
+                dispose = nil
+              }
+            }, receiveValue: { })
+        }
     }
 
-    open func approveBnbOrder(id: Int64, signed: WCBinanceOrderSignature) -> AnyPublisher<WCBinanceTxConfirmParam, Error> {
+    open func approveBnbOrder(id: Int64, signed: WCBinanceOrderSignature) -> Future<WCBinanceTxConfirmParam, Error> {
         let result = signed.encodedString
-        return approveRequest(id: id, result: result)
-        .flatMap { _ in
-            Future<WCBinanceTxConfirmParam, Error> { [weak self] seal in
+      
+        return Future { seal in
+            var dispose: AnyCancellable?
+            dispose = self.approveRequest(id: id, result: result)
+            .receive(on: DispatchQueue.main)
+            .sink(receiveCompletion: { completion in
+                if case .finished = completion {
+                    dispose?.cancel()
+                    dispose = nil
+                }
+            }, receiveValue: { [weak self] in
                 self?.bnb.confirmResolvers[id] = seal
-            }
+            })
         }
-        .eraseToAnyPublisher()
     }
 
     open func approveRequest<T: Codable>(id: Int64, result: T) -> Future<Void, Error> {

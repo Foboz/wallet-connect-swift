@@ -1,7 +1,7 @@
 PODS:
   - CryptoSwift (1.4.2)
   - Starscream (4.0.4)
-  - SwiftLint (0.46.2)
+  - SwiftLint (0.36.0)
   - SwiftProtobuf (1.5.0)
   - TrustWalletCore (0.12.25):
     - SwiftProtobuf (~> 1.5.0)
@@ -10,7 +10,7 @@ PODS:
     - Starscream
 
 DEPENDENCIES:
-  - SwiftLint
+  - SwiftLint (= 0.36.0)
   - TrustWalletCore (= 0.12.25)
   - WalletConnect (from `../`)
 
@@ -29,11 +29,11 @@ EXTERNAL SOURCES:
 SPEC CHECKSUMS:
   CryptoSwift: a532e74ed010f8c95f611d00b8bbae42e9fe7c17
   Starscream: 5178aed56b316f13fa3bc55694e583d35dd414d9
-  SwiftLint: 6bc52a21f0fd44cab9aa2dc8e534fb9f5e3ec507
+  SwiftLint: fc9859e4e1752340664851f667bb1898b9c90114
   SwiftProtobuf: 241400280f912735c1e1b9fe675fdd2c6c4d42e2
   TrustWalletCore: c5e7f4c875b9e68203ee2b0312272dd7dd32ce98
   WalletConnect: c94b78515fc0c1825d8a1837ccc63771b48c617f
 
-PODFILE CHECKSUM: c8807d1c51980914b0cff8beb5c481c6ca6881d9
+PODFILE CHECKSUM: a454def79547a4f1ce1b290366527f9ebabc5769
 
 COCOAPODS: 1.11.2
